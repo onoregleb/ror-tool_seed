@@ -21,6 +21,7 @@ def get_app_dir():
     return getattr(sys, '_MEIPASS', os.path.abspath(os.path.dirname(__file__)))
 
 
+# Класс, отвечающий за детекцию
 class DetectionThread(QThread):
     detection_finished = pyqtSignal(object, list)
     progress_updated = pyqtSignal(int)
@@ -139,6 +140,7 @@ class MainWindow(QDialog):
             self.orig.setScene(self.orig_scene)
             self.fit_images()
 
+    # Функция предназначена для детектирования семян по классам
     def run_detection(self):
         if not hasattr(self, 'file_path') or not self.file_path:
             QMessageBox.warning(self, "Ошибка", "Пожалуйста, загрузите изображение перед запуском.")
