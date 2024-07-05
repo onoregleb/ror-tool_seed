@@ -1,0 +1,6 @@
+.venv/
+.idea/
+build/
+dist/
+ROR-tool.spec
+build.iss
