@@ -8,8 +8,7 @@ from PIL import Image
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtWidgets import (
-    QApplication, QStackedWidget, QGraphicsScene, QVBoxLayout, QFileDialog, QDialog, QSizePolicy, QGraphicsView,
-    QMessageBox, QWidget
+    QApplication, QStackedWidget, QGraphicsScene, QVBoxLayout, QFileDialog, QDialog, QSizePolicy, QMessageBox
 )
 from PyQt6.uic import loadUi
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
