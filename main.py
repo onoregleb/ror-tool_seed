@@ -1,8 +1,9 @@
 import os
 import sys
 from io import BytesIO
+
+import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
 from PIL import Image
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
@@ -13,14 +14,14 @@ from PyQt6.QtWidgets import (
 from PyQt6.uic import loadUi
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from detector import pipeline
+from yolov5.detect import Path, run
+import cv2
 
 
 def get_app_dir():
     return getattr(sys, '_MEIPASS', os.path.abspath(os.path.dirname(__file__)))
 
 
-# Класс, отвечающий за детекцию
 class DetectionThread(QThread):
     detection_finished = pyqtSignal(object, list)
     progress_updated = pyqtSignal(int)
@@ -31,13 +32,11 @@ class DetectionThread(QThread):
         self.model_path = model_path
         self.yolo_path = yolo_path
 
+    # Процесс детектирования из yolov5/detect.py
     def run(self):
-        with Image.open(self.file_path) as img:
-            buf = BytesIO()
-            img.save(buf, format='JPEG')
-            byte_im = buf.getvalue()
-        reconstructed_img, diams = pipeline(byte_im, self.model_path, self.yolo_path, (640, 640), self.update_progress)
-        self.detection_finished.emit(reconstructed_img, diams)
+        p, im = run(weights=Path(self.model_path), source=Path(self.file_path),
+                                       progress_callback=self.update_progress)
+        self.detection_finished.emit(p, im)
 
     def update_progress(self, progress):
         self.progress_updated.emit(progress)
@@ -139,11 +138,12 @@ class MainWindow(QDialog):
             self.orig.setScene(self.orig_scene)
             self.fit_images()
 
-    # Функция предназначена для детектирования семян по классам
     def run_detection(self):
+
         if not hasattr(self, 'file_path') or not self.file_path:
             QMessageBox.warning(self, "Ошибка", "Пожалуйста, загрузите изображение перед запуском.")
             return
+
         model_path = os.path.join(get_app_dir(), "yolov5/models/modelsweight.pt")
         yolo_path = os.path.join(get_app_dir(), 'yolov5')
 
@@ -157,13 +157,13 @@ class MainWindow(QDialog):
     def update_progress(self, progress):
         self.progress_bar.setValue(progress)
 
-    def display_results(self, reconstructed_img, diams):
+    def display_results(self, p, im):
         self.progress_bar.setVisible(False)
 
-        detect_img = Image.fromarray(reconstructed_img, "RGB")
-        diams_df = pd.DataFrame(diams)
-        self.diams_df = diams_df
-        diams_df = diams_df.rename(columns={0: 'diameter'})
+        # Конвертируем изображение из BGR в RGB
+        rgb_im = cv2.cvtColor(np.array(im), cv2.COLOR_BGR2RGB)
+
+        detect_img = Image.fromarray(np.array(rgb_im), "RGB")
         qim = QImage(detect_img.tobytes(), detect_img.size[0], detect_img.size[1], QImage.Format.Format_RGB888)
         self.qim = qim
         pixmap = QPixmap.fromImage(qim)
@@ -171,47 +171,6 @@ class MainWindow(QDialog):
         self.post_scene.addPixmap(pixmap)
         self.post.setScene(self.post_scene)
         self.fit_images()
-
-        # Настройка стиля Seaborn
-        sns.set(style="whitegrid", palette="muted", color_codes=True)
-
-        # Строим график размеров семян
-        if not diams_df.empty:
-            fig = Figure(figsize=(7, 8))  # Увеличиваем высоту графика
-            ax = fig.add_subplot(111)
-
-            # Создание гистограммы и KDE с улучшенным стилем
-            sns.histplot(data=diams_df, x='diameter', bins=20, kde=True, ax=ax,
-                         line_kws={"linewidth": 2, "linestyle": "--"},
-                         color="b", edgecolor="k", alpha=0.7)
-
-            ax.set_xlabel('Диаметр', fontsize=12)
-            ax.set_ylabel('Частота', fontsize=12)
-            ax.set_title('Распределение диаметров семян', fontsize=12)
-
-            # Устанавливаем размер шрифтов для меток
-            ax.tick_params(axis='both', which='major', labelsize=10)
-
-            fig.subplots_adjust(bottom=0.25)  # Увеличиваем нижний отступ
-
-            # Удалить старый canvas если он существует
-            if hasattr(self, 'canvas'):
-                self.graph_layout.removeWidget(self.canvas)
-                self.canvas.deleteLater()
-                del self.canvas
-
-            # Добавить новый canvas в layout
-            self.canvas = FigureCanvas(fig)
-            self.graph_layout = QVBoxLayout(self.plot)  # Обновляем layout для plot
-            self.graph_layout.addWidget(self.canvas)
-            self.canvas.draw()
-
-            # Установить минимум и максимум размеров для plot
-            self.plot.setMinimumSize(400, 300)
-            self.plot.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-            self.plot.updateGeometry()
-
-            self.fit_images()
 
 
 app = QApplication(sys.argv)
