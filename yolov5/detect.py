@@ -49,6 +49,11 @@ from utils.general import (LOGGER, Profile, check_file, check_img_size, check_im
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import select_device, smart_inference_mode
 
+import math
+def calculate_diagonal(xyxy):
+    x1, y1, x2, y2 = xyxy
+    return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+
 
 @smart_inference_mode()
 def run(
@@ -159,6 +164,11 @@ def run(
 
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
+                    diagonal = calculate_diagonal(xyxy)  # Calculate diagonal of the bounding box
+                    class_name = names[int(cls)]
+                    with open(f'{save_dir}/{class_name}_sizes.txt', 'a') as f:
+                        f.write(f'{diagonal:.2f}\n')  # Save the diagonal size to a file
+
                     if save_txt:  # Write to file
                         xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
                         line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format

@@ -1,21 +1,22 @@
 import os
 import sys
-from io import BytesIO
-
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import cv2
+
 from PIL import Image
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtWidgets import (
-    QApplication, QStackedWidget, QGraphicsScene, QVBoxLayout, QFileDialog, QDialog, QSizePolicy, QMessageBox
+    QApplication, QStackedWidget, QGraphicsScene, QVBoxLayout, QFileDialog, QDialog, QSizePolicy, QMessageBox,
+    QTableWidgetItem
 )
 from PyQt6.uic import loadUi
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from yolov5.detect import Path, run
-import cv2
+
 
 
 def get_app_dir():
@@ -75,7 +76,7 @@ class NewRes(QDialog):
 
 
 class MainWindow(QDialog):
-    """Класс для взаимодействия с основным окном"""
+    """Класс для взаимодействия с главным окном"""
 
     def __init__(self):
         super().__init__()
@@ -88,12 +89,12 @@ class MainWindow(QDialog):
         self.detection_thread = None
 
     def resizeEvent(self, event):
-        """Обрабатывает событие изменения размера окна для подгонки изображений в QGraphicsView и графика."""
+        """Обрабатывает событие изменения размера для подгонки изображений и графика в QGraphicsView."""
         self.fit_images()
         super().resizeEvent(event)
 
     def fit_images(self):
-        """Подгоняет изображения под размер QGraphicsView."""
+        """Подгоняет изображения и график к размеру QGraphicsView."""
         if hasattr(self, 'orig_scene') and self.orig_scene:
             self.orig.fitInView(self.orig_scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
         if hasattr(self, 'post_scene') and self.post_scene:
@@ -107,7 +108,7 @@ class MainWindow(QDialog):
 
     def save_post_img(self):
         if hasattr(self, 'qim'):
-            file_path, _ = QFileDialog.getSaveFileName(self, 'Сохранить изображение', '', 'Images (*.png *.jpg *.jpeg)')
+            file_path, _ = QFileDialog.getSaveFileName(self, 'Сохранить изображение', '', 'Изображения (*.png *.jpg *.jpeg)')
             if file_path:
                 self.qim.save(file_path)
 
@@ -117,15 +118,15 @@ class MainWindow(QDialog):
 
     def set_new_res_data(self, fio, date, time, supplier):
         try:
-            self.fio.setText("ФИО: " + fio)
+            self.fio.setText("Имя: " + fio)
             self.date.setText("Дата: " + date)
             self.time.setText("Время: " + time)
             self.sup.setText("Поставщик: " + supplier)
         except Exception as e:
-            print(f"Произошла ошибка в set_new_res_data: {e}")
+            print(f"Ошибка в set_new_res_data: {e}")
 
     def open_file_dialog(self):
-        fname, _ = QFileDialog.getOpenFileName(self, 'Выберите изображение', '')
+        fname, _ = QFileDialog.getOpenFileName(self, 'Выбрать изображение', '')
         if fname:
             self.file_path = fname
             self.load_image()
@@ -139,15 +140,14 @@ class MainWindow(QDialog):
             self.fit_images()
 
     def run_detection(self):
-
         if not hasattr(self, 'file_path') or not self.file_path:
-            QMessageBox.warning(self, "Ошибка", "Пожалуйста, загрузите изображение перед запуском.")
+            QMessageBox.warning(self, "Ошибка", "Пожалуйста, загрузите изображение перед запуском обнаружения.")
             return
 
         model_path = os.path.join(get_app_dir(), "yolov5/models/modelsweight.pt")
         yolo_path = os.path.join(get_app_dir(), 'yolov5')
 
-        # Запуск детекции в отдельном потоке
+        # Запуск детектирования в отдельном потоке
         self.detection_thread = DetectionThread(self.file_path, model_path, yolo_path)
         self.detection_thread.detection_finished.connect(self.display_results)
         self.detection_thread.progress_updated.connect(self.update_progress)
@@ -160,7 +160,7 @@ class MainWindow(QDialog):
     def display_results(self, p, im):
         self.progress_bar.setVisible(False)
 
-        # Конвертируем изображение из BGR в RGB
+        # Преобразование изображения из BGR в RGB
         rgb_im = cv2.cvtColor(np.array(im), cv2.COLOR_BGR2RGB)
 
         detect_img = Image.fromarray(np.array(rgb_im), "RGB")
@@ -172,6 +172,79 @@ class MainWindow(QDialog):
         self.post.setScene(self.post_scene)
         self.fit_images()
 
+        # Загрузка и отображение графика распределения размеров
+        self.load_and_display_graph()
+
+        # Загрузка данных из Excel в таблицу
+        self.load_excel_to_table()
+
+    def load_and_display_graph(self):
+        try:
+            file_path = os.path.join(get_app_dir(), 'yolov5/runs/detect/exp/main_grain_sizes.txt')
+            if os.path.exists(file_path):
+                diams = []
+                with open(file_path, 'r') as f:
+                    for line in f:
+                        diams.append(float(line.strip()))
+                diams_df = pd.DataFrame(diams, columns=['diameter'])
+
+                # Установка стиля Seaborn
+                sns.set(style="whitegrid", palette="muted", color_codes=True)
+
+                if not diams_df.empty:
+                    fig = Figure(figsize=(7, 8))  # Увеличение высоты графика
+                    ax = fig.add_subplot(111)
+
+                    # Создание гистограммы без KDE
+                    sns.histplot(data=diams_df, x='diameter', bins=20, kde=False, ax=ax,
+                                 color="b", edgecolor="k", alpha=0.7)
+
+                    ax.set_xlabel('Диаметр', fontsize=12)
+                    ax.set_ylabel('Частота', fontsize=12)
+                    ax.set_title('Распределение диаметров зерен пшеницы', fontsize=12)
+
+                    # Установка размеров шрифтов для меток
+                    ax.tick_params(axis='both', which='major', labelsize=10)
+
+                    fig.subplots_adjust(bottom=0.25)  # Увеличение нижнего поля
+
+                    # Удаление старого canvas, если он существует
+                    if hasattr(self, 'canvas'):
+                        self.graph_layout.removeWidget(self.canvas)
+                        self.canvas.deleteLater()
+                        del self.canvas
+
+                    # Добавление нового canvas в layout
+                    self.canvas = FigureCanvas(fig)
+                    self.graph_layout = QVBoxLayout(self.plot)  # Обновление layout для графика
+                    self.graph_layout.addWidget(self.canvas)
+                    self.canvas.draw()
+
+                    # Установка минимальных и максимальных размеров для графика
+                    self.plot.setMinimumSize(400, 300)
+                    self.plot.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+                    self.plot.updateGeometry()
+
+                    self.fit_images()
+        except Exception as e:
+            print(f"Error in load_and_display_graph: {e}")
+
+    def load_excel_to_table(self):
+        file_path = os.path.join(get_app_dir(), 'check_list.xlsx')
+        if file_path:
+            df = pd.read_excel(file_path)
+
+            # Заменить все NaN на пробелы
+            df = df.fillna(' ')
+
+            self.check_list_widget.setRowCount(df.shape[0])
+            self.check_list_widget.setColumnCount(df.shape[1])
+            self.check_list_widget.setHorizontalHeaderLabels(df.columns)
+
+            for i in range(df.shape[0]):
+                for j in range(df.shape[1]):
+                    self.check_list_widget.setItem(i, j, QTableWidgetItem(str(df.iat[i, j])))
+
 
 app = QApplication(sys.argv)
 main_window = MainWindow()
@@ -182,6 +255,6 @@ widget.move(QApplication.primaryScreen().geometry().center() - widget.rect().cen
 try:
     app.exec()
 except Exception as e:
-    print(f"Произошла ошибка: {e}")
+    print(f"Error: {e}")
 finally:
-    print("Выход!")
+    print("Exit!")

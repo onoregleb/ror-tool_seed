@@ -296,8 +296,17 @@ QGraphicsView {
         <layout class="QHBoxLayout" name="horizontalLayout_2">
          <item>
           <widget class="QLabel" name="fio">
+           <property name="font">
+            <font>
+             <family>MS Shell Dlg 2</family>
+             <pointsize>10</pointsize>
+             <weight>50</weight>
+             <italic>false</italic>
+             <bold>false</bold>
+            </font>
+           </property>
            <property name="styleSheet">
-            <string notr="true">font: 9pt &quot;MS Shell Dlg 2&quot;;</string>
+            <string notr="true">font: 10pt &quot;MS Shell Dlg 2&quot;;</string>
            </property>
            <property name="text">
             <string>ФИО: </string>
@@ -306,8 +315,17 @@ QGraphicsView {
          </item>
          <item>
           <widget class="QLabel" name="date">
+           <property name="font">
+            <font>
+             <family>MS Shell Dlg 2</family>
+             <pointsize>10</pointsize>
+             <weight>50</weight>
+             <italic>false</italic>
+             <bold>false</bold>
+            </font>
+           </property>
            <property name="styleSheet">
-            <string notr="true">font: 9pt &quot;MS Shell Dlg 2&quot;;</string>
+            <string notr="true">font: 10pt &quot;MS Shell Dlg 2&quot;;</string>
            </property>
            <property name="text">
             <string>Дата:</string>
@@ -384,8 +402,17 @@ QGraphicsView {
         <layout class="QHBoxLayout" name="horizontalLayout_3">
          <item>
           <widget class="QLabel" name="time">
+           <property name="font">
+            <font>
+             <family>MS Shell Dlg 2</family>
+             <pointsize>10</pointsize>
+             <weight>50</weight>
+             <italic>false</italic>
+             <bold>false</bold>
+            </font>
+           </property>
            <property name="styleSheet">
-            <string notr="true">font: 9pt &quot;MS Shell Dlg 2&quot;;</string>
+            <string notr="true">font: 10pt &quot;MS Shell Dlg 2&quot;;</string>
            </property>
            <property name="text">
             <string>Время:</string>
@@ -394,8 +421,17 @@ QGraphicsView {
          </item>
          <item>
           <widget class="QLabel" name="sup">
+           <property name="font">
+            <font>
+             <family>MS Shell Dlg 2</family>
+             <pointsize>10</pointsize>
+             <weight>50</weight>
+             <italic>false</italic>
+             <bold>false</bold>
+            </font>
+           </property>
            <property name="styleSheet">
-            <string notr="true">font: 9pt &quot;MS Shell Dlg 2&quot;;</string>
+            <string notr="true">font: 10pt &quot;MS Shell Dlg 2&quot;;</string>
            </property>
            <property name="text">
             <string>Поставщик:</string>
@@ -418,7 +454,7 @@ QGraphicsView {
           <widget class="QGraphicsView" name="plot"/>
          </item>
          <item>
-          <widget class="QGraphicsView" name="graphicsView"/>
+          <widget class="QTableWidget" name="check_list_widget"/>
          </item>
          <item>
           <widget class="QPushButton" name="save_check">
