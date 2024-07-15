@@ -88,22 +88,42 @@ class MainWindow(QDialog):
         self.progress_bar.setVisible(False)
         self.start_btn.clicked.connect(self.run_detection)
         self.save_post.clicked.connect(self.save_post_img)
-        self.save_check.clicked.connect(self.save_to_excel)
+        self.save_check.clicked.connect(self.save_temp_excel)
         self.detection_thread = None
         self.excel_path = None
         self.df = None
+        self.temp_path = None
+
+    def closeEvent(self, event):
+        """Метод вызывается при закрытии окна."""
+        try:
+            if self.temp_dir and os.path.exists(self.temp_dir):
+                shutil.rmtree(self.temp_dir)
+        except Exception as e:
+            print(f"Ошибка при удалении временной папки: {e}")
+        finally:
+            event.accept()
+
+    def save_temp_excel(self):
+        # Получаем путь для сохранения измененного файла
+        save_path, _ = QFileDialog.getSaveFileName(self, "Сохранить чек-лист", "", "Excel Files (*.xlsx)")
+
+        if save_path:
+            try:
+                # Убедитесь, что директория существует
+                save_dir = os.path.dirname(save_path)
+                if not os.path.exists(save_dir):
+                    os.makedirs(save_dir)
+
+                # Копирование временного файла в указанный путь
+                shutil.copy(self.temp_path, save_path)
+            except Exception as e:
+                QMessageBox.warning(self, "Ошибка!", f"Ошибка в сохранении файла: {e}")
 
     def resizeEvent(self, event):
         """Обрабатывает событие изменения размера для подгонки изображений и графика в QGraphicsView."""
         self.fit_images()
         super().resizeEvent(event)
-
-    def save_to_excel(self):
-        if hasattr(self, 'df'):
-            self.df.columns = [' '.join(col).strip() for col in self.df.columns.values]
-            file_path, _ = QFileDialog.getSaveFileName(self, 'Сохранить чек-лист', '', 'Excel Files (*.xlsx)')
-            if file_path:
-                self.df.to_excel(file_path, index=True)
 
     def fit_images(self):
         """Подгоняет изображения и график к размеру QGraphicsView."""
@@ -207,7 +227,7 @@ class MainWindow(QDialog):
                     fig = Figure(figsize=(7, 8))  # Увеличение высоты графика
                     ax = fig.add_subplot(111)
 
-                    # Создание гистограммы без KDE
+                    # Создание гистограммы
                     sns.histplot(data=diams_df, x='diameter', bins=20, kde=False, ax=ax,
                                  color="b", edgecolor="k", alpha=0.7)
 
@@ -252,7 +272,7 @@ class MainWindow(QDialog):
             if hasattr(self, 'sup') and self.sup.text():
                 sheet['D2'] = self.sup.text().split(' ', 1)[1]
 
-            # Calculate and insert percentages of area for each file
+            # Расчет и вставка процентного соотношения для каждой линии
             self.calculate_and_insert_areas(sheet)
 
         except IndexError as e:
@@ -266,7 +286,7 @@ class MainWindow(QDialog):
         try:
             temp_dir = tempfile.mkdtemp()
 
-            # List of files to process
+            # Список файлов для обработки
             files_to_process = [
                 'broken_grain_sizes.txt',
                 'main_grain_sizes.txt',
@@ -274,7 +294,7 @@ class MainWindow(QDialog):
                 'Weed_seeds_sizes.txt'
             ]
 
-            # Calculate total area for all files
+            # Расчет общей площади и для каждого вида отдельно
             total_area = 0.0
             file_areas = {}
 
@@ -284,7 +304,7 @@ class MainWindow(QDialog):
                 file_areas[filename] = areas
                 total_area += sum(areas)
 
-            # Insert percentages into specific cells
+            # Вствка % в ячейки
             if total_area > 0:
                 for i, filename in enumerate(files_to_process):
                     areas = file_areas.get(filename, [])
@@ -298,8 +318,6 @@ class MainWindow(QDialog):
                             sheet['C13'] = f"{percentage:.2f}%"
                         elif filename == 'Weed_seeds_sizes.txt':
                             sheet['C14'] = f"{percentage:.2f}%"
-
-            shutil.rmtree(temp_dir)
 
         except Exception as e:
             print(f"Error in calculate_and_insert_areas: {e}")
@@ -317,8 +335,9 @@ class MainWindow(QDialog):
     def load_excel_to_table(self):
         self.excel_path = "check_list.xlsx"
 
-        temp_dir = tempfile.mkdtemp()
-        temp_path = os.path.join(temp_dir, "check_list_copy.xlsx")
+        self.temp_dir = tempfile.mkdtemp()
+        temp_path = os.path.join(self.temp_dir, "check_list_copy.xlsx")
+        self.temp_path = temp_path
         shutil.copy(self.excel_path, temp_path)
 
         # Загружаем копию книги и выбираем активный лист
@@ -326,6 +345,7 @@ class MainWindow(QDialog):
         sheet = workbook.active
 
         sheet = self.fill_table(sheet)
+        workbook.save(self.temp_path)
 
         # Определяем количество строк и столбцов
         num_rows = sheet.max_row
@@ -348,7 +368,7 @@ class MainWindow(QDialog):
                 item = QTableWidgetItem(str(value) if value is not None else ' ')
                 self.check_list_widget.setItem(row - 1, col - 1, item)
 
-        shutil.rmtree(temp_dir)
+
 
 app = QApplication(sys.argv)
 main_window = MainWindow()
