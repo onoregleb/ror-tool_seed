@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import cv2
+import shutil
+import tempfile
 
 from PIL import Image
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
@@ -16,7 +18,7 @@ from PyQt6.uic import loadUi
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from yolov5.detect import Path, run
-
+from openpyxl import load_workbook
 
 
 def get_app_dir():
@@ -86,12 +88,22 @@ class MainWindow(QDialog):
         self.progress_bar.setVisible(False)
         self.start_btn.clicked.connect(self.run_detection)
         self.save_post.clicked.connect(self.save_post_img)
+        self.save_check.clicked.connect(self.save_to_excel)
         self.detection_thread = None
+        self.excel_path = None
+        self.df = None
 
     def resizeEvent(self, event):
         """Обрабатывает событие изменения размера для подгонки изображений и графика в QGraphicsView."""
         self.fit_images()
         super().resizeEvent(event)
+
+    def save_to_excel(self):
+        if hasattr(self, 'df'):
+            self.df.columns = [' '.join(col).strip() for col in self.df.columns.values]
+            file_path, _ = QFileDialog.getSaveFileName(self, 'Сохранить чек-лист', '', 'Excel Files (*.xlsx)')
+            if file_path:
+                self.df.to_excel(file_path, index=True)
 
     def fit_images(self):
         """Подгоняет изображения и график к размеру QGraphicsView."""
@@ -108,7 +120,7 @@ class MainWindow(QDialog):
 
     def save_post_img(self):
         if hasattr(self, 'qim'):
-            file_path, _ = QFileDialog.getSaveFileName(self, 'Сохранить изображение', '', 'Изображения (*.png *.jpg *.jpeg)')
+            file_path, _ = QFileDialog.getSaveFileName(self, 'Сохранить изображение', '', 'Images (*.png *.jpg *.jpeg)')
             if file_path:
                 self.qim.save(file_path)
 
@@ -229,22 +241,114 @@ class MainWindow(QDialog):
         except Exception as e:
             print(f"Error in load_and_display_graph: {e}")
 
+    def fill_table(self, sheet):
+        try:
+            if hasattr(self, 'date') and self.date.text():
+                sheet['B1'] = self.date.text().split(' ', 1)[1]
+            if hasattr(self, 'time') and self.time.text():
+                sheet['B2'] = self.time.text().split(' ', 1)[1]
+            if hasattr(self, 'fio') and self.fio.text():
+                sheet['D1'] = self.fio.text().split(' ', 1)[1]
+            if hasattr(self, 'sup') and self.sup.text():
+                sheet['D2'] = self.sup.text().split(' ', 1)[1]
+
+            # Calculate and insert percentages of area for each file
+            self.calculate_and_insert_areas(sheet)
+
+        except IndexError as e:
+            print(f"IndexError: {e}. Skipping filling table for missing or invalid data.")
+        except Exception as e:
+            print(f"Error in fill_table: {e}")
+
+        return sheet
+
+    def calculate_and_insert_areas(self, sheet):
+        try:
+            temp_dir = tempfile.mkdtemp()
+
+            # List of files to process
+            files_to_process = [
+                'broken_grain_sizes.txt',
+                'main_grain_sizes.txt',
+                'Organic_admixture_sizes.txt',
+                'Weed_seeds_sizes.txt'
+            ]
+
+            # Calculate total area for all files
+            total_area = 0.0
+            file_areas = {}
+
+            for filename in files_to_process:
+                file_path = os.path.join(get_app_dir(), f'yolov5/runs/detect/exp/{filename}')
+                areas = self.calculate_areas(file_path)
+                file_areas[filename] = areas
+                total_area += sum(areas)
+
+            # Insert percentages into specific cells
+            if total_area > 0:
+                for i, filename in enumerate(files_to_process):
+                    areas = file_areas.get(filename, [])
+                    if areas:
+                        file_total_area = sum(areas)
+                        percentage = (file_total_area / total_area) * 100
+
+                        if filename == 'broken_grain_sizes.txt':
+                            sheet['G12'] = f"{percentage:.2f}%"
+                        elif filename == 'Organic_admixture_sizes.txt':
+                            sheet['C13'] = f"{percentage:.2f}%"
+                        elif filename == 'Weed_seeds_sizes.txt':
+                            sheet['C14'] = f"{percentage:.2f}%"
+
+            shutil.rmtree(temp_dir)
+
+        except Exception as e:
+            print(f"Error in calculate_and_insert_areas: {e}")
+
+    def calculate_areas(self, file_path):
+        try:
+            with open(file_path, 'r') as file:
+                lines = file.readlines()
+                areas = [float(line.strip()) ** 2 / 2 for line in lines]
+            return areas
+        except Exception as e:
+            print(f"Error in calculate_areas for {file_path}: {e}")
+            return []
+
     def load_excel_to_table(self):
-        file_path = os.path.join(get_app_dir(), 'check_list.xlsx')
-        if file_path:
-            df = pd.read_excel(file_path)
+        self.excel_path = "check_list.xlsx"
 
-            # Заменить все NaN на пробелы
-            df = df.fillna(' ')
+        temp_dir = tempfile.mkdtemp()
+        temp_path = os.path.join(temp_dir, "check_list_copy.xlsx")
+        shutil.copy(self.excel_path, temp_path)
 
-            self.check_list_widget.setRowCount(df.shape[0])
-            self.check_list_widget.setColumnCount(df.shape[1])
-            self.check_list_widget.setHorizontalHeaderLabels(df.columns)
+        # Загружаем копию книги и выбираем активный лист
+        workbook = load_workbook(temp_path)
+        sheet = workbook.active
 
-            for i in range(df.shape[0]):
-                for j in range(df.shape[1]):
-                    self.check_list_widget.setItem(i, j, QTableWidgetItem(str(df.iat[i, j])))
+        sheet = self.fill_table(sheet)
 
+        # Определяем количество строк и столбцов
+        num_rows = sheet.max_row
+        num_cols = sheet.max_column
+
+        # Устанавливаем количество строк и столбцов в QTableWidget
+        self.check_list_widget.setRowCount(num_rows)
+        self.check_list_widget.setColumnCount(num_cols)
+
+        # Устанавливаем заголовки столбцов
+        column_headers = []
+        for col in range(1, num_cols + 1):
+            column_headers.append(str(sheet.cell(row=1, column=col).value))
+        self.check_list_widget.setHorizontalHeaderLabels(column_headers)
+
+        # Заполняем таблицу значениями из Excel
+        for row in range(1, num_rows + 1):
+            for col in range(1, num_cols + 1):
+                value = sheet.cell(row=row, column=col).value
+                item = QTableWidgetItem(str(value) if value is not None else ' ')
+                self.check_list_widget.setItem(row - 1, col - 1, item)
+
+        shutil.rmtree(temp_dir)
 
 app = QApplication(sys.argv)
 main_window = MainWindow()
