@@ -82,6 +82,7 @@ class MainWindow(QDialog):
 
     def __init__(self):
         super().__init__()
+        self.setWindowTitle("ROR-tool_seed-1.0")
         loadUi(os.path.join(get_app_dir(), 'main_form_lay_seed.ui'), self)
         self.choose_file.clicked.connect(self.open_file_dialog)
         self.new_res.clicked.connect(self.open_new_res_dialog)
@@ -176,6 +177,9 @@ class MainWindow(QDialog):
             QMessageBox.warning(self, "Ошибка", "Пожалуйста, загрузите изображение перед запуском обнаружения.")
             return
 
+        # Очистка старых данных перед новым запуском
+        self.clear_previous_results()
+
         model_path = os.path.join(get_app_dir(), "yolov5/models/modelsweight.pt")
         yolo_path = os.path.join(get_app_dir(), 'yolov5')
 
@@ -185,6 +189,17 @@ class MainWindow(QDialog):
         self.detection_thread.progress_updated.connect(self.update_progress)
         self.progress_bar.setVisible(True)
         self.detection_thread.start()
+
+    def clear_previous_results(self):
+        """Очистка старых данных перед новым запуском детектирования."""
+        if hasattr(self, 'post_scene') and self.post_scene:
+            self.post_scene.clear()
+        if hasattr(self, 'canvas') and self.canvas:
+            self.graph_layout.removeWidget(self.canvas)
+            self.canvas.deleteLater()
+            self.canvas = None
+            self.graph_layout.deleteLater()  # Полное удаление старого layout
+        self.check_list_widget.clearContents()
 
     def update_progress(self, progress):
         self.progress_bar.setValue(progress)
@@ -241,15 +256,17 @@ class MainWindow(QDialog):
                     fig.subplots_adjust(bottom=0.25)  # Увеличение нижнего поля
 
                     # Удаление старого canvas, если он существует
-                    if hasattr(self, 'canvas'):
+                    if hasattr(self, 'canvas') and self.canvas:
                         self.graph_layout.removeWidget(self.canvas)
                         self.canvas.deleteLater()
-                        del self.canvas
+                        self.canvas = None
+                        self.graph_layout.deleteLater()  # Полное удаление старого layout
 
                     # Добавление нового canvas в layout
                     self.canvas = FigureCanvas(fig)
                     self.graph_layout = QVBoxLayout(self.plot)  # Обновление layout для графика
                     self.graph_layout.addWidget(self.canvas)
+                    self.plot.setLayout(self.graph_layout)  # Установка layout для графика
                     self.canvas.draw()
 
                     # Установка минимальных и максимальных размеров для графика
@@ -258,6 +275,10 @@ class MainWindow(QDialog):
                     self.plot.updateGeometry()
 
                     self.fit_images()
+                else:
+                    print("Диаметр dataframe пуст.")
+            else:
+                print(f"Файл {file_path} не найден.")
         except Exception as e:
             print(f"Error in load_and_display_graph: {e}")
 
@@ -284,15 +305,11 @@ class MainWindow(QDialog):
 
     def calculate_and_insert_areas(self, sheet):
         try:
-            temp_dir = tempfile.mkdtemp()
 
-            # Список файлов для обработки
-            files_to_process = [
-                'broken_grain_sizes.txt',
-                'main_grain_sizes.txt',
-                'Organic_admixture_sizes.txt',
-                'Weed_seeds_sizes.txt'
-            ]
+            files_dir = os.path.join(get_app_dir(), 'yolov5/runs/detect/exp')
+
+            # List all files in the directory
+            files_to_process = [f for f in os.listdir(files_dir) if os.path.isfile(os.path.join(files_dir, f))]
 
             # Расчет общей площади и для каждого вида отдельно
             total_area = 0.0
@@ -318,6 +335,12 @@ class MainWindow(QDialog):
                             sheet['C13'] = f"{percentage:.2f}%"
                         elif filename == 'Weed_seeds_sizes.txt':
                             sheet['C14'] = f"{percentage:.2f}%"
+                        elif filename == 'puny_grain_sizes.txt':
+                            sheet['G13'] = f"{percentage:.2f}%"
+                        elif filename == 'Barley_sizes.txt':
+                            sheet['G17'] = f"{percentage:.2f}%"
+                        # elif filename == 'Oatmeal_sizes.txt':
+                        #     sheet['G18'] = f"{percentage:.2f}%"
 
         except Exception as e:
             print(f"Error in calculate_and_insert_areas: {e}")
@@ -333,7 +356,7 @@ class MainWindow(QDialog):
             return []
 
     def load_excel_to_table(self):
-        self.excel_path = "check_list.xlsx"
+        self.excel_path = self.excel_path = os.path.join(get_app_dir(), "check_list.xlsx")
 
         self.temp_dir = tempfile.mkdtemp()
         temp_path = os.path.join(self.temp_dir, "check_list_copy.xlsx")
