@@ -120,6 +120,8 @@ def run(
     # Run inference
     model.warmup(imgsz=(1 if pt or model.triton else bs, 3, *imgsz))  # warmup
     seen, windows, dt = 0, [], (Profile(), Profile(), Profile())
+    diagonals = {name: [] for name in names}  # Dictionary to store diagonals for each class
+
     for path, im, im0s, vid_cap, s in dataset:
         with dt[0]:
             im = torch.from_numpy(im).to(model.device)
@@ -164,16 +166,12 @@ def run(
 
                 # Write results
                 for *xyxy, conf, cls in reversed(det):
-                    diagonal = calculate_diagonal(xyxy)  # Calculate diagonal of the bounding box
                     class_name = names[int(cls)]
-                    with open(f'{save_dir}/{class_name}_sizes.txt', 'a') as f:
-                        f.write(f'{diagonal:.2f}\n')  # Save the diagonal size to a file
+                    if class_name not in diagonals:
+                        diagonals[class_name] = []  # Ensure the class key exists in the dictionary
 
-                    if save_txt:  # Write to file
-                        xywh = (xyxy2xywh(torch.tensor(xyxy).view(1, 4)) / gn).view(-1).tolist()  # normalized xywh
-                        line = (cls, *xywh, conf) if save_conf else (cls, *xywh)  # label format
-                        with open(f'{txt_path}.txt', 'a') as f:
-                            f.write(('%g ' * len(line)).rstrip() % line + '\n')
+                    diagonal = calculate_diagonal(xyxy)  # Calculate diagonal of the bounding box
+                    diagonals[class_name].append(diagonal)  # Append diagonal to the corresponding class list
 
                     if save_img or save_crop or view_img:  # Add bbox to image
                         c = int(cls)  # integer class
@@ -189,5 +187,5 @@ def run(
             if progress_callback:
                 progress_callback(int(seen / len(dataset) * 100))
 
-    # Return last processed image and its path
-    return p, im0
+    # Return last processed image, its path, and the dictionary of diagonals per class
+    return p, im0, diagonals

@@ -26,7 +26,7 @@ def get_app_dir():
 
 
 class DetectionThread(QThread):
-    detection_finished = pyqtSignal(object, list)
+    detection_finished = pyqtSignal(object, list, dict)  # signal includes diagonals
     progress_updated = pyqtSignal(int)
 
     def __init__(self, file_path, model_path, yolo_path):
@@ -35,11 +35,9 @@ class DetectionThread(QThread):
         self.model_path = model_path
         self.yolo_path = yolo_path
 
-    # Процесс детектирования из yolov5/detect.py
     def run(self):
-        p, im = run(weights=Path(self.model_path), source=Path(self.file_path),
-                                       progress_callback=self.update_progress)
-        self.detection_finished.emit(p, im)
+        p, im, diagonals = run(weights=Path(self.model_path), source=Path(self.file_path), progress_callback=self.update_progress)
+        self.detection_finished.emit(p, im, diagonals)  # emit diagonals
 
     def update_progress(self, progress):
         self.progress_updated.emit(progress)
@@ -204,7 +202,7 @@ class MainWindow(QDialog):
     def update_progress(self, progress):
         self.progress_bar.setValue(progress)
 
-    def display_results(self, p, im):
+    def display_results(self, p, im, diagonals):
         self.progress_bar.setVisible(False)
 
         # Преобразование изображения из BGR в RGB
@@ -220,19 +218,16 @@ class MainWindow(QDialog):
         self.fit_images()
 
         # Загрузка и отображение графика распределения размеров
-        self.load_and_display_graph()
+        self.load_and_display_graph(diagonals)
 
         # Загрузка данных из Excel в таблицу
-        self.load_excel_to_table()
+        self.load_excel_to_table(diagonals)
 
-    def load_and_display_graph(self):
+    def load_and_display_graph(self, diagonals):
         try:
-            file_path = os.path.join(get_app_dir(), 'yolov5/runs/detect/exp/main_grain_sizes.txt')
-            if os.path.exists(file_path):
-                diams = []
-                with open(file_path, 'r') as f:
-                    for line in f:
-                        diams.append(float(line.strip()))
+            # Проверяем, есть ли данные для основного зерна в diagonals
+            if 'main_grain' in diagonals:
+                diams = diagonals['main_grain']
                 diams_df = pd.DataFrame(diams, columns=['diameter'])
 
                 # Установка стиля Seaborn
@@ -278,11 +273,11 @@ class MainWindow(QDialog):
                 else:
                     print("Диаметр dataframe пуст.")
             else:
-                print(f"Файл {file_path} не найден.")
+                print("Нет данных для main_grain в diagonals.")
         except Exception as e:
             print(f"Error in load_and_display_graph: {e}")
 
-    def fill_table(self, sheet):
+    def fill_table(self, diagonals, sheet):
         try:
             if hasattr(self, 'date') and self.date.text():
                 sheet['B1'] = self.date.text().split(' ', 1)[1]
@@ -294,7 +289,7 @@ class MainWindow(QDialog):
                 sheet['D2'] = self.sup.text().split(' ', 1)[1]
 
             # Расчет и вставка процентного соотношения для каждой линии
-            self.calculate_and_insert_areas(sheet)
+            self.calculate_and_insert_areas(diagonals=diagonals, sheet=sheet)
 
         except IndexError as e:
             print(f"IndexError: {e}. Skipping filling table for missing or invalid data.")
@@ -303,59 +298,52 @@ class MainWindow(QDialog):
 
         return sheet
 
-    def calculate_and_insert_areas(self, sheet):
+    def calculate_and_insert_areas(self, diagonals, sheet):
         try:
-
-            files_dir = os.path.join(get_app_dir(), 'yolov5/runs/detect/exp')
-
-            # List all files in the directory
-            files_to_process = [f for f in os.listdir(files_dir) if os.path.isfile(os.path.join(files_dir, f))]
-
             # Расчет общей площади и для каждого вида отдельно
             total_area = 0.0
             file_areas = {}
 
-            for filename in files_to_process:
-                file_path = os.path.join(get_app_dir(), f'yolov5/runs/detect/exp/{filename}')
-                areas = self.calculate_areas(file_path)
-                file_areas[filename] = areas
+            for key, diagonals_list in diagonals.items():
+                # Рассчитываем площади для каждого вида
+                areas = [(d ** 2) / 2 for d in diagonals_list]
+                file_areas[key] = areas
                 total_area += sum(areas)
 
-            # Вствка % в ячейки
+            # Вставка % в ячейки tablewidget
             if total_area > 0:
-                for i, filename in enumerate(files_to_process):
-                    areas = file_areas.get(filename, [])
+                for key, areas in file_areas.items():
                     if areas:
                         file_total_area = sum(areas)
                         percentage = (file_total_area / total_area) * 100
 
-                        if filename == 'broken_grain_sizes.txt':
-                            sheet['G12'] = f"{percentage:.2f}%"
-                        elif filename == 'Organic_admixture_sizes.txt':
-                            sheet['C13'] = f"{percentage:.2f}%"
-                        elif filename == 'Weed_seeds_sizes.txt':
-                            sheet['C14'] = f"{percentage:.2f}%"
-                        elif filename == 'puny_grain_sizes.txt':
-                            sheet['G13'] = f"{percentage:.2f}%"
-                        elif filename == 'Barley_sizes.txt':
-                            sheet['G17'] = f"{percentage:.2f}%"
-                        # elif filename == 'Oatmeal_sizes.txt':
-                        #     sheet['G18'] = f"{percentage:.2f}%"
+                        if key == 'broken_grain':
+                            sheet.cell(row=12, column=7).value = f"{percentage:.2f}%"
+                        elif key == 'Organic_admixture':
+                            sheet.cell(row=13, column=3).value = f"{percentage:.2f}%"
+                        elif key == 'Weed_seeds':
+                            sheet.cell(row=14, column=3).value = f"{percentage:.2f}%"
+                        elif key == 'puny_grain':
+                            sheet.cell(row=13, column=7).value = f"{percentage:.2f}%"
+                        elif key == 'Barley':
+                            sheet.cell(row=17, column=7).value = f"{percentage:.2f}%"
+                        # elif key == 'Oatmeal':
+                        #     sheet.cell(row=18, column=7).value = f"{percentage:.2f}%"
 
         except Exception as e:
             print(f"Error in calculate_and_insert_areas: {e}")
 
-    def calculate_areas(self, file_path):
-        try:
-            with open(file_path, 'r') as file:
-                lines = file.readlines()
-                areas = [float(line.strip()) ** 2 / 2 for line in lines]
-            return areas
-        except Exception as e:
-            print(f"Error in calculate_areas for {file_path}: {e}")
-            return []
+    # def calculate_areas(self, file_path):
+    #     try:
+    #         with open(file_path, 'r') as file:
+    #             lines = file.readlines()
+    #             areas = [float(line.strip()) ** 2 / 2 for line in lines]
+    #         return areas
+    #     except Exception as e:
+    #         print(f"Error in calculate_areas for {file_path}: {e}")
+    #         return []
 
-    def load_excel_to_table(self):
+    def load_excel_to_table(self, diagonals):
         self.excel_path = self.excel_path = os.path.join(get_app_dir(), "check_list.xlsx")
 
         self.temp_dir = tempfile.mkdtemp()
@@ -367,7 +355,7 @@ class MainWindow(QDialog):
         workbook = load_workbook(temp_path)
         sheet = workbook.active
 
-        sheet = self.fill_table(sheet)
+        sheet = self.fill_table(diagonals, sheet)
         workbook.save(self.temp_path)
 
         # Определяем количество строк и столбцов
