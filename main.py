@@ -327,8 +327,8 @@ class MainWindow(QDialog):
                             sheet.cell(row=13, column=7).value = f"{percentage:.2f}%"
                         elif key == 'Barley':
                             sheet.cell(row=17, column=7).value = f"{percentage:.2f}%"
-                        # elif key == 'Oatmeal':
-                        #     sheet.cell(row=18, column=7).value = f"{percentage:.2f}%"
+                        elif key == 'Oatmeal':
+                             sheet.cell(row=18, column=7).value = f"{percentage:.2f}%"
 
         except Exception as e:
             print(f"Error in calculate_and_insert_areas: {e}")
