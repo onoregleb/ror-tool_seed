@@ -26,7 +26,7 @@ def get_app_dir():
 
 
 class DetectionThread(QThread):
-    detection_finished = pyqtSignal(object, list, dict)  # signal includes diagonals
+    detection_finished = pyqtSignal(object, list, dict)
     progress_updated = pyqtSignal(int)
 
     def __init__(self, file_path, model_path, yolo_path):
@@ -37,7 +37,7 @@ class DetectionThread(QThread):
 
     def run(self):
         p, im, diagonals = run(weights=Path(self.model_path), source=Path(self.file_path), progress_callback=self.update_progress)
-        self.detection_finished.emit(p, im, diagonals)  # emit diagonals
+        self.detection_finished.emit(p, im, diagonals)
 
     def update_progress(self, progress):
         self.progress_updated.emit(progress)
@@ -164,11 +164,18 @@ class MainWindow(QDialog):
 
     def load_image(self):
         if self.file_path:
-            pixmap = QPixmap(self.file_path)
-            self.orig_scene = QGraphicsScene()
-            self.orig_scene.addPixmap(pixmap)
-            self.orig.setScene(self.orig_scene)
-            self.fit_images()
+            # Использование PIL для загрузки изображения
+            try:
+                pil_image = Image.open(self.file_path)
+                # Конвертация PIL-изображения в формат OpenCV
+                cv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+                pixmap = QPixmap(self.file_path)  # Использование QPixmap для отображения
+                self.orig_scene = QGraphicsScene()
+                self.orig_scene.addPixmap(pixmap)
+                self.orig.setScene(self.orig_scene)
+                self.fit_images()
+            except Exception as e:
+                QMessageBox.warning(self, "Ошибка", f"Ошибка при загрузке изображения: {e}")
 
     def run_detection(self):
         if not hasattr(self, 'file_path') or not self.file_path:
@@ -181,8 +188,21 @@ class MainWindow(QDialog):
         model_path = os.path.join(get_app_dir(), "yolov5/models/modelsweight.pt")
         yolo_path = os.path.join(get_app_dir(), 'yolov5')
 
+        # Использование PIL для загрузки изображения
+        try:
+            pil_image = Image.open(self.file_path)
+            # Конвертация PIL-изображения в формат OpenCV
+            cv_image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+            # Сохранение временного файла для использования в run
+            temp_dir = tempfile.mkdtemp()
+            temp_image_path = os.path.join(temp_dir, 'temp_image.jpg')
+            cv2.imwrite(temp_image_path, cv_image)
+        except Exception as e:
+            QMessageBox.warning(self, "Ошибка", f"Ошибка при обработке изображения: {e}")
+            return
+
         # Запуск детектирования в отдельном потоке
-        self.detection_thread = DetectionThread(self.file_path, model_path, yolo_path)
+        self.detection_thread = DetectionThread(temp_image_path, model_path, yolo_path)
         self.detection_thread.detection_finished.connect(self.display_results)
         self.detection_thread.progress_updated.connect(self.update_progress)
         self.progress_bar.setVisible(True)
@@ -278,6 +298,9 @@ class MainWindow(QDialog):
             print(f"Error in load_and_display_graph: {e}")
 
     def fill_table(self, diagonals, sheet):
+        # Расчет и вставка процентного соотношения для каждой линии
+        self.calculate_and_insert_areas(diagonals=diagonals, sheet=sheet)
+
         try:
             if hasattr(self, 'date') and self.date.text():
                 sheet['B1'] = self.date.text().split(' ', 1)[1]
@@ -287,9 +310,6 @@ class MainWindow(QDialog):
                 sheet['D1'] = self.fio.text().split(' ', 1)[1]
             if hasattr(self, 'sup') and self.sup.text():
                 sheet['D2'] = self.sup.text().split(' ', 1)[1]
-
-            # Расчет и вставка процентного соотношения для каждой линии
-            self.calculate_and_insert_areas(diagonals=diagonals, sheet=sheet)
 
         except IndexError as e:
             print(f"IndexError: {e}. Skipping filling table for missing or invalid data.")
@@ -328,20 +348,38 @@ class MainWindow(QDialog):
                         elif key == 'Barley':
                             sheet.cell(row=17, column=7).value = f"{percentage:.2f}%"
                         elif key == 'Oatmeal':
-                             sheet.cell(row=18, column=7).value = f"{percentage:.2f}%"
+                            sheet.cell(row=16, column=3).value = f"{percentage:.2f}%"
+
+            # Расчет суммы для ячеек C19 и G19
+            c19_sum = 0.0
+            g19_sum = 0.0
+
+            # Суммируем значения в ячейках C11-C18
+            for row in range(11, 19):
+                cell_value = sheet.cell(row=row, column=3).value
+                if cell_value and '%' in cell_value:
+                    try:
+                        number = float(cell_value.replace('%', '').strip())
+                        c19_sum += number
+                    except ValueError:
+                        print(f"Invalid value in cell C{row}: '{cell_value}'")
+
+            # Суммируем значения в ячейках G12-G17
+            for row in range(12, 18):
+                cell_value = sheet.cell(row=row, column=7).value
+                if cell_value and '%' in cell_value:
+                    try:
+                        number = float(cell_value.replace('%', '').strip())
+                        g19_sum += number
+                    except ValueError:
+                        print(f"Invalid value in cell G{row}: '{cell_value}'")
+
+            # Вставка сумм в ячейки C19 и G19
+            sheet.cell(row=19, column=3).value = f"{c19_sum:.2f}%"
+            sheet.cell(row=19, column=7).value = f"{g19_sum:.2f}%"
 
         except Exception as e:
             print(f"Error in calculate_and_insert_areas: {e}")
-
-    # def calculate_areas(self, file_path):
-    #     try:
-    #         with open(file_path, 'r') as file:
-    #             lines = file.readlines()
-    #             areas = [float(line.strip()) ** 2 / 2 for line in lines]
-    #         return areas
-    #     except Exception as e:
-    #         print(f"Error in calculate_areas for {file_path}: {e}")
-    #         return []
 
     def load_excel_to_table(self, diagonals):
         self.excel_path = self.excel_path = os.path.join(get_app_dir(), "check_list.xlsx")
@@ -378,7 +416,6 @@ class MainWindow(QDialog):
                 value = sheet.cell(row=row, column=col).value
                 item = QTableWidgetItem(str(value) if value is not None else ' ')
                 self.check_list_widget.setItem(row - 1, col - 1, item)
-
 
 
 app = QApplication(sys.argv)

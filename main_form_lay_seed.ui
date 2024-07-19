@@ -261,6 +261,26 @@ QGraphicsView {
            </property>
           </widget>
          </item>
+         <item>
+          <widget class="QLabel" name="label">
+           <property name="styleSheet">
+            <string notr="true">font: 10pt &quot;MS Shell Dlg 2&quot;;</string>
+           </property>
+           <property name="text">
+            <string>ROR_tool seed</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="version">
+           <property name="styleSheet">
+            <string notr="true">font: 10pt &quot;MS Shell Dlg 2&quot;;</string>
+           </property>
+           <property name="text">
+            <string>version 1.0.2</string>
+           </property>
+          </widget>
+         </item>
         </layout>
        </widget>
       </item>
