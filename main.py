@@ -92,6 +92,7 @@ class MainWindow(QDialog):
         self.excel_path = None
         self.df = None
         self.temp_path = None
+        self.version.setText("version 1.0.3")
 
     def closeEvent(self, event):
         """Метод вызывается при закрытии окна."""
