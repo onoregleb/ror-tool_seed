@@ -9,7 +9,7 @@ import tempfile
 
 from PIL import Image
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtGui import QPixmap, QImage, QScreen
 from PyQt6.QtWidgets import (
     QApplication, QStackedWidget, QGraphicsScene, QVBoxLayout, QFileDialog, QDialog, QSizePolicy, QMessageBox,
     QTableWidgetItem
@@ -420,14 +420,25 @@ class MainWindow(QDialog):
 
 
 app = QApplication(sys.argv)
-main_window = MainWindow()
+main_wind = MainWindow()
 widget = QStackedWidget()
-widget.addWidget(main_window)
+widget.addWidget(main_wind)
+
+# Показать виджет до вычисления центра
 widget.show()
-widget.move(QApplication.primaryScreen().geometry().center() - widget.rect().center())
+
+# Вычислить центр экрана
+screen_geometry = QScreen.availableGeometry(QApplication.primaryScreen())
+center_point = screen_geometry.center()
+
+# Переместить виджет в центр экрана
+frame_geometry = widget.frameGeometry()
+frame_geometry.moveCenter(center_point)
+widget.move(frame_geometry.topLeft())
+
 try:
     app.exec()
 except Exception as e:
-    print(f"Error: {e}")
+    print(f"An error occurred: {e}")
 finally:
-    print("Exit!")
+    print("Exiting!")
