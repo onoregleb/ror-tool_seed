@@ -6,3 +6,4 @@ ROR-tool.spec
 build.iss
 ROR-tool_seed.spec
 pyinstaller.txt
+__pycache__
